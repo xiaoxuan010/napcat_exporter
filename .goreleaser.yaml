@@ -1,0 +1,68 @@
+version: 2
+project_name: napcat-exporter
+before:
+  hooks:
+    - go run ./scripts/licenses
+builds:
+  - id: exporter
+    main: ./cmd/napcat_exporter
+    binary: napcat_exporter
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64]
+    goamd64: [v1]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.revision={{ .Commit }}
+archives:
+  - formats: [tar.gz]
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+      - CONTRIBUTING.md
+      - SECURITY.md
+      - CODE_OF_CONDUCT.md
+      - docs/**
+      - src: .tmp/THIRD_PARTY_NOTICES
+        dst: .
+        strip_parent: true
+      - examples/**
+      - packaging/systemd/*
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+snapshot:
+  version_template: "{{ incpatch .Version }}-dev"
+nfpms:
+  - id: deb
+    package_name: "{{ .ProjectName }}"
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Arch }}"
+    vendor: xiaoxuan010
+    homepage: https://github.com/xiaoxuan010/napcat_exporter
+    maintainer: xiaoxuan010 <me@xiaoxuan010.top>
+    description: Read-only Prometheus exporter for NapCat OneBot online status.
+    license: MIT
+    formats: [deb]
+    bindir: /usr/bin
+    dependencies: [adduser, init-system-helpers]
+    contents:
+      - src: packaging/systemd/napcat-exporter.service
+        dst: /usr/lib/systemd/system/napcat-exporter.service
+      - src: examples/napcat-exporter.env
+        dst: /etc/napcat-exporter/environment
+        type: config
+        file_info:
+          mode: 0600
+      - src: LICENSE
+        dst: /usr/share/doc/napcat-exporter/LICENSE
+      - src: README.md
+        dst: /usr/share/doc/napcat-exporter/README.md
+      - src: .tmp/THIRD_PARTY_NOTICES
+        dst: /usr/share/doc/napcat-exporter/THIRD_PARTY_NOTICES
+    scripts:
+      preinstall: packaging/scripts/preinstall.sh
+      postinstall: packaging/scripts/postinstall.sh
+      preremove: packaging/scripts/preremove.sh
+      postremove: packaging/scripts/postremove.sh

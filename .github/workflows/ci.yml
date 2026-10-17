@@ -1,0 +1,71 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Formatting and modules
+        run: |
+          test -z "$(gofmt -l cmd internal scripts)"
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+      - run: go test -race -coverprofile=coverage.out ./...
+      - name: Build and exercise real Prometheus
+        run: |
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/napcat_exporter" ./cmd/napcat_exporter
+          bash scripts/install-prometheus.sh "$RUNNER_TEMP/prometheus-tools"
+          "$RUNNER_TEMP/prometheus-tools/promtool" test rules examples/alerts.test.yml
+          NAPCAT_E2E_BINARY="$RUNNER_TEMP/napcat_exporter" PROMETHEUS_BINARY="$RUNNER_TEMP/prometheus-tools/prometheus" PROMTOOL_BINARY="$RUNNER_TEMP/prometheus-tools/promtool" go test -count=1 -v ./internal/acceptance -run TestPrometheus
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - id: tools
+        run: cat .github/tool-versions.env >> "$GITHUB_OUTPUT"
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: ${{ steps.tools.outputs.GOLANGCI_LINT_VERSION }}
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - id: tools
+        run: cat .github/tool-versions.env >> "$GITHUB_OUTPUT"
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          version: ${{ steps.tools.outputs.GORELEASER_VERSION }}
+          args: check
+      - run: goreleaser release --snapshot --clean
+      - name: Install, upgrade, remove and purge actual deb
+        run: |
+          go test -c -o "$RUNNER_TEMP/package-acceptance" ./internal/acceptance
+          package=$(find "$PWD/dist" -maxdepth 1 -name '*.deb' -print -quit)
+          test -n "$package"
+          sudo env NAPCAT_DEB="$package" "$RUNNER_TEMP/package-acceptance" -test.v -test.run '^TestPackageLifecycle$'

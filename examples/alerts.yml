@@ -1,0 +1,21 @@
+groups:
+  - name: napcat
+    interval: 15s
+    rules:
+      - alert: NapCatQQOnlineUnconfirmed
+        expr: |
+          up{job="napcat"}
+          unless on(job, instance)
+          (
+            (up{job="napcat"} == 1)
+            and on(job, instance)
+            (napcat_api_up{job="napcat", action="get_status"} == 1)
+            and on(job, instance)
+            (napcat_online{job="napcat"} == 1)
+          )
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }} 持续无法确认 QQ 在线"
+          description: "请检查 QQ 登录状态、NapCat API、鉴权配置及 exporter 抓取状态。"
