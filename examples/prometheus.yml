@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 15s
+  scrape_timeout: 5s
+rule_files:
+  - alerts.yml
+scrape_configs:
+  - job_name: napcat
+    static_configs:
+      # Example only: configure the exporter address/port for your network.
+      - targets: ["127.0.0.1:18599"]

@@ -1,0 +1,6 @@
+/dist/
+/.tmp/
+/coverage.out
+/napcat_exporter
+/napcat_exporter.exe
+*.deb
